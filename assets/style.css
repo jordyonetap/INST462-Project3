@@ -1,0 +1,38 @@
+.player-img {
+    cursor: pointer;
+    border-radius: 12px;
+}
+
+.chart-box {
+    width: 300px;
+    height: 200px;
+    background-color: #EDE8D0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    border-radius: 10px;
+}
+
+.back-button { 
+  position: fixed; 
+  top: 20px; 
+  left: 20px; 
+  padding: 10px 16px; 
+  font-size: 16px; 
+  border: none; 
+  background-color: black; 
+  color: white; 
+  border-radius: 8px; 
+  cursor: pointer; 
+  z-index: 1000;
+  
+  /* Add these to ensure it stays button-sized */
+  width: auto;
+  display: inline-block; 
+}
+
+
+.back-button:hover {
+    background-color: #333;
+}
