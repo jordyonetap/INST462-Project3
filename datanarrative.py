@@ -1,11 +1,18 @@
 from dash import Dash, html, dcc, Input, Output, State, ctx, ALL
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
 
 # -----------------------------
 # LOAD DATA
 # -----------------------------
 df = pd.read_csv("basketballadvanced2026_cleaned.csv")
+
+# Pre-compute STL+BLK combined metric
+if "STL%" in df.columns and "BLK%" in df.columns:
+    df["STL+BLK"] = df["STL%"] + df["BLK%"]
+elif "STL" in df.columns and "BLK" in df.columns:
+    df["STL+BLK"] = df["STL"] + df["BLK"]
 
 app = Dash(__name__, suppress_callback_exceptions=True)
 
@@ -22,6 +29,15 @@ WHITE = "#FFFFFF"
 HIGHLIGHT_YELLOW = "#FFD700"
 OTHER_CANDIDATE_RED = "#FF4C4C"
 
+# -----------------------------
+# HELPER: hex + alpha -> rgba()
+# -----------------------------
+def hex_to_rgba(hex_color, alpha=0.2):
+    hex_color = hex_color.lstrip("#")
+    r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 players = {
     "wemby": {
         "name": "Victor Wembanyama",
@@ -30,16 +46,16 @@ players = {
         "img": "https://cdn.nba.com/headshots/nba/latest/1040x760/1641705.png",
         "search": "Wembanyama",
         "color": "#00bcd4",
-        "argument": "Wembanyama's defensive dominance combined with elite offense at his size makes him historically unprecedented."
+        "argument": "Wembanyama's defensive dominance combined with elite offense at his size makes him historically unprecedented. While he may not lead in offensive categories, his two way dominance is unlike anything we have seen before. His accolades on the defensive side of the court have already earned him a Defensive Player of the Year award, and his offensive game continues to improve rapidly in only his third year."
     },
     "Jokic": {
         "name": "Nikola Jokic",
-        "short": "JOKIĆ",
+        "short": "JOKIC",
         "team": "Denver Nuggets",
         "img": "https://cdn.nba.com/headshots/nba/latest/1040x760/203999.png",
         "search": "Jokic",
         "color": "#FFC72C",
-        "argument": "Jokic's VORP and PER lead all players — his all-around statistical dominance is unmatched in league history."
+        "argument": "Jokic's Player Efficiency Rating (PER, measured in positive stats - negative stats) combined with his VORP (value over replacement player, measures box score compared to a replacement player) lead all players — his all-around statistical dominance is unmatched in league history. He is looking to cement himself as one of the greatest players ever, with a fourth MVP award solidifying his legacy in the record books."
     },
     "shai": {
         "name": "Shai Gilgeous-Alexander",
@@ -48,11 +64,21 @@ players = {
         "img": "https://cdn.nba.com/headshots/nba/latest/1040x760/1628983.png",
         "search": "Gilgeous",
         "color": "#007AC1",
-        "argument": "SGA's efficiency and win shares on the league's best team make him the most impactful player this season."
+        "argument": "SGA's efficiency and win shares on the league's best team make him the most impactful player this season. Don't let Jokic's statistical dominance distract you from the fact that SGA is the engine that drives the best offense in the league. He is the most complete guard in the league, and his case is strengthened by leading all guards in VORP and OWS. His contributions on both sides of the floor make him a strong MVP candidate and a frontrunner for the award."
     }
 }
 
 PLAYER_KEYS = list(players.keys())
+
+COMPARE_METRICS = ["VORP", "BPM", "WS/48", "PER", "TS%", "STL+BLK"]
+METRIC_LABELS = {
+    "VORP": "VORP",
+    "BPM": "BPM",
+    "WS/48": "WS/48",
+    "PER": "PER",
+    "TS%": "TS%",
+    "STL+BLK": "STL+BLK"
+}
 
 # -----------------------------
 # CHART THEMES
@@ -110,9 +136,111 @@ def _find_column(columns):
     return None
 
 
+def get_percentile(series, val):
+    """Return percentile rank (0-100) of val in series, ignoring NaN."""
+    clean = series.dropna()
+    if len(clean) == 0:
+        return 0
+    return float((clean < val).sum() / len(clean) * 100)
+
+
+def get_player_row(name):
+    return df[df["Player"].str.contains(name, case=False, na=False)]
+
+
+def get_compare_percentiles(search_name):
+    """Return dict of metric -> percentile for a player."""
+    row = get_player_row(search_name)
+    if row.empty:
+        return None, None
+    result = {}
+    raw = {}
+    for m in COMPARE_METRICS:
+        if m in df.columns and not row[m].empty:
+            val = row[m].values[0]
+            result[m] = get_percentile(df[m], val)
+            raw[m] = val
+        else:
+            result[m] = 0
+            raw[m] = 0
+    return result, raw
+
+
+def build_percentile_chart(metric, candidates_data, search_data, search_label):
+    """
+    Build a horizontal bar chart for one metric showing percentile of
+    each MVP candidate + searched player.
+    """
+    entries = []
+    for key in PLAYER_KEYS:
+        p = players[key]
+        pct = candidates_data[key]["percentiles"].get(metric, 0)
+        raw = candidates_data[key]["raw"].get(metric, 0)
+        entries.append({
+            "label": p["short"],
+            "pct": pct,
+            "raw": raw,
+            "color": p["color"]
+        })
+    # Add search player
+    if search_data and search_data["percentiles"]:
+        pct = search_data["percentiles"].get(metric, 0)
+        raw = search_data["raw"].get(metric, 0)
+        entries.append({
+            "label": search_label,
+            "pct": pct,
+            "raw": raw,
+            "color": GOLD
+        })
+
+    labels = [e["label"] for e in entries]
+    pcts = [e["pct"] for e in entries]
+    raws = [e["raw"] for e in entries]
+    colors = [e["color"] for e in entries]
+
+    fig = go.Figure()
+    fig.add_trace(go.Bar(
+        x=pcts,
+        y=labels,
+        orientation="h",
+        marker=dict(
+            color=colors,
+            line=dict(color="rgba(0,0,0,0)", width=0)
+        ),
+        text=[f"{p:.0f}th  ({r:.2f})" for p, r in zip(pcts, raws)],
+        textposition="outside",
+        textfont=dict(color=TEXT, size=10),
+        cliponaxis=False,
+        hovertemplate="%{y}: %{x:.1f}th percentile<extra></extra>"
+    ))
+
+    fig.update_layout(
+        title=dict(text=METRIC_LABELS.get(metric, metric), font=dict(size=13, color=GOLD), x=0.5),
+        xaxis=dict(
+            range=[0, 120],
+            gridcolor="#1E2640",
+            zerolinecolor="#1E2640",
+            color=TEXT,
+            ticksuffix="th",
+            showgrid=True
+        ),
+        yaxis=dict(
+            gridcolor="#1E2640",
+            color=TEXT,
+            autorange="reversed"
+        ),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(16,22,42,0.9)",
+        font=dict(family="Georgia, serif", color=TEXT, size=11),
+        margin=dict(l=60, r=80, t=44, b=20),
+        showlegend=False,
+        height=200
+    )
+    return fig
+
+
 def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_rows):
     charts = []
-
     pos_col = _find_column(["Pos", "POSITION", "Position"])
     if pos_col is not None and not row.empty:
         pos = row[pos_col].values[0]
@@ -152,10 +280,6 @@ def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_
     return charts[:2]
 
 
-def get_player_row(name):
-    return df[df["Player"].str.contains(name, case=False, na=False)]
-
-
 def build_player_charts(player_key):
     p = players[player_key]
     row = get_player_row(p["search"])
@@ -175,7 +299,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "AST%", "TRB%", row, color,
                     "Assist % vs Rebound %",
                     "Assist Rate (AST%)", "Rebound Rate (TRB%)", other_rows=other_candidate_rows),
-                "caption": "No center in NBA history posts this AST%+TRB% combo.",
+                "caption": "No center in NBA history has ever reached this high of a combined assist and rebound rate — Jokic's unique playstyle makes him a triple-double threat every night. He is truly a one-of-one archetype in the NBA.",
                 "x": "AST%", "y": "TRB%",
                 "x_label": "Assist Rate (AST%)", "y_label": "Rebound Rate (TRB%)"
             },
@@ -183,7 +307,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "VORP", "PER", row, color,
                     "VORP vs Player Efficiency Rating",
                     "Value Over Replacement (VORP)", "Player Efficiency Rating (PER)", other_rows=other_candidate_rows),
-                "caption": "Jokic leads the league in both VORP and PER — the two gold standards of player value.",
+                "caption": "Jokic leads the league in both VORP and PER — the two gold standards of player value. He is far and away the best player in both categories. If the MVP award was given to the player with the best advanced metrics, Jokic would have won the award 3 months ago. His statistical dominance is unlike anything we have seen before.",
                 "x": "VORP", "y": "PER",
                 "x_label": "Value Over Replacement (VORP)", "y_label": "Player Efficiency Rating (PER)"
             },
@@ -191,7 +315,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "VORP", "OWS", row, color,
                     "VORP vs Offensive Win Shares",
                     "Value Over Replacement (VORP)", "Offensive Win Shares (OWS)", other_rows=other_candidate_rows),
-                "caption": "His offensive win shares relative to VORP show an outlier who wins games by himself.",
+                "caption": "His offensive win shares relative to VORP show an outlier who wins games by himself. The combination of elite outside scoring, finesse in the post, and unmatched court vision allows Jokic to contribute to his team's offense in a way no one else can.",
                 "x": "VORP", "y": "OWS",
                 "x_label": "Value Over Replacement (VORP)", "y_label": "Offensive Win Shares (OWS)"
             },
@@ -202,7 +326,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "PER", "VORP", row, color,
                     "Efficiency vs Overall Value",
                     "Player Efficiency Rating (PER)", "Value Over Replacement (VORP)", other_rows=other_candidate_rows),
-                "caption": "Wemby's PER/VORP combo is extraordinary for a player his age in just his second season.",
+                "caption": "Wemby's Player Efficiency Rating (PER, measured in positive stats - negative stats) combined with his VORP (value over replacement player, measures box score compared to a replacement player) shows an extraordinary player for his age in just his third season. The only player above Wembanyama not in the MVP race is Luka Doncic, a perennial MVP candidate and one of the best players in the league — Wemby is in elite company here.",
                 "x": "PER", "y": "VORP",
                 "x_label": "Player Efficiency Rating (PER)", "y_label": "Value Over Replacement (VORP)"
             },
@@ -210,7 +334,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "BLK%", "STL%", row, color,
                     "Block % vs Steal %",
                     "Block Rate (BLK%)", "Steal Rate (STL%)", other_rows=other_candidate_rows),
-                "caption": "His defensive versatility — blocking shots AND stealing the ball — is historically rare.",
+                "caption": "His defensive versatility — blocking shots AND stealing the ball — is historically rare. At a staggering 7'4, Wembanyama demands respect on the court through his defensive contributions.",
                 "x": "BLK%", "y": "STL%",
                 "x_label": "Block Rate (BLK%)", "y_label": "Steal Rate (STL%)"
             },
@@ -218,7 +342,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "OWS", "DWS", row, color,
                     "Offensive vs Defensive Win Shares",
                     "Offensive Win Shares (OWS)", "Defensive Win Shares (DWS)", other_rows=other_candidate_rows),
-                "caption": "Wemby contributes elite win shares on BOTH ends — virtually no one else does this.",
+                "caption": "While not as impressive on the offensive side as the other candidates, Wemby contributes elite win shares on BOTH ends — virtually no one else does this. Wembanyama is the premiere two-way player in the leauge, and deserved his Defensive Player of the Year award.",
                 "x": "OWS", "y": "DWS",
                 "x_label": "Offensive Win Shares (OWS)", "y_label": "Defensive Win Shares (DWS)"
             },
@@ -229,7 +353,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "PER", "VORP", row, color,
                     "Efficiency vs Overall Value",
                     "Player Efficiency Rating (PER)", "Value Over Replacement (VORP)", other_rows=other_candidate_rows),
-                "caption": "SGA's efficiency numbers rival Jokic while playing on the conference's best team.",
+                "caption": "SGA's efficiency numbers rival Jokic while playing on the conference's best team. His ability to deal with different defensive schemes every night while still demonstrating unparallelled efficiency is a testament to his case as the most impactful player in the league.",
                 "x": "PER", "y": "VORP",
                 "x_label": "Player Efficiency Rating (PER)", "y_label": "Value Over Replacement (VORP)"
             },
@@ -237,7 +361,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "OWS", "VORP", row, color,
                     "Offensive Win Shares vs VORP",
                     "Offensive Win Shares (OWS)", "Value Over Replacement (VORP)", other_rows=other_candidate_rows),
-                "caption": "His OWS lead the guard position — he single-handedly drives OKC's offense.",
+                "caption": "His OWS lead the guard position — he single-handedly drives OKC's offense. His VORP is the best among guards, showing that his contributions are not just efficient but also impactful. SGA's combination of efficiency and impact on the best team in the league makes him a strong MVP candidate.",
                 "x": "OWS", "y": "VORP",
                 "x_label": "Offensive Win Shares (OWS)", "y_label": "Value Over Replacement (VORP)"
             },
@@ -245,7 +369,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "PER", "OWS", row, color,
                     "PER vs Offensive Win Shares",
                     "Player Efficiency Rating (PER)", "Offensive Win Shares (OWS)", other_rows=other_candidate_rows),
-                "caption": "Consistency and efficiency make SGA the most complete guard in the league.",
+                "caption": "Consistency and efficiency make SGA the most complete guard in the league. SGA sat out 26 4th quarters this season and still put up PER and OWS numbers that rival Jokic. His ability to maintain elite efficiency while being the focal point of the best offense in the league is a testament to his case as the most impactful player this season.",
                 "x": "PER", "y": "OWS",
                 "x_label": "Player Efficiency Rating (PER)", "y_label": "Offensive Win Shares (OWS)"
             },
@@ -254,85 +378,56 @@ def build_player_charts(player_key):
 
 
 def build_comparison_charts():
-    keys = PLAYER_KEYS
-    names = [players[k]["name"].split(" ")[-1] for k in keys]
-    colors = [players[k]["color"] for k in keys]
+    """Build radar/spider charts comparing all three MVP candidates."""
+    metrics = ["VORP", "BPM", "WS/48", "PER", "TS%", "STL+BLK"]
+    available = [m for m in metrics if m in df.columns]
 
-    metrics = ["PER", "VORP", "OWS"]
-    vals = []
-    for k in keys:
-        row = get_player_row(players[k]["search"])
-        vals.append([row[m].values[0] if not row.empty and m in row.columns else 0 for m in metrics])
+    # Normalize each metric to 0-1 scale across the full dataset
+    normed = {}
+    for m in available:
+        col = df[m].dropna()
+        mn, mx = col.min(), col.max()
+        normed[m] = (mx - mn) if (mx - mn) != 0 else 1
 
-    figs = []
-
-    # Chart 1: Bar chart — PER comparison
-    fig1 = go.Figure(go.Bar(
-        x=names,
-        y=[v[0] for v in vals],
-        marker_color=colors,
-        text=[f"{v[0]:.1f}" for v in vals],
-        textposition="outside",
-        textfont=dict(color=WHITE, size=13)
-    ))
-    fig1.update_layout(
-        title=dict(text="Player Efficiency Rating (PER)", font=dict(size=13, color=GOLD), x=0.5),
-        yaxis_title="PER",
-        **CHART_LAYOUT
-    )
-    figs.append((fig1, "PER measures overall per-minute production. Higher = more efficient."))
-
-    # Chart 2: Bar chart — VORP
-    fig2 = go.Figure(go.Bar(
-        x=names,
-        y=[v[1] for v in vals],
-        marker_color=colors,
-        text=[f"{v[1]:.1f}" for v in vals],
-        textposition="outside",
-        textfont=dict(color=WHITE, size=13)
-    ))
-    fig2.update_layout(
-        title=dict(text="Value Over Replacement Player (VORP)", font=dict(size=13, color=GOLD), x=0.5),
-        yaxis_title="VORP",
-        **CHART_LAYOUT
-    )
-    figs.append((fig2, "VORP estimates how much better this player is than a replacement-level player."))
-
-    # Chart 3: Radar chart
-    fig3 = go.Figure()
-    radar_metrics = ["PER", "VORP", "OWS", "DWS", "WS"]
-    for i, k in enumerate(keys):
-        row = get_player_row(players[k]["search"])
-        r_vals = []
-        for m in radar_metrics:
-            if not row.empty and m in row.columns:
-                r_vals.append(float(row[m].values[0]))
+    fig = go.Figure()
+    for key in PLAYER_KEYS:
+        p = players[key]
+        row = get_player_row(p["search"])
+        if row.empty:
+            continue
+        vals = []
+        for m in available:
+            if m in row.columns:
+                raw = float(row[m].values[0])
+                col = df[m].dropna()
+                mn = col.min()
+                v = (raw - mn) / normed[m] * 100
+                vals.append(round(v, 1))
             else:
-                r_vals.append(0)
-        fig3.add_trace(go.Scatterpolar(
-            r=r_vals + [r_vals[0]],
-            theta=radar_metrics + [radar_metrics[0]],
+                vals.append(0)
+
+        fig.add_trace(go.Scatterpolar(
+            r=vals + [vals[0]],
+            theta=available + [available[0]],
             fill="toself",
-            fillcolor=players[k]["color"] + "33",
-            line=dict(color=players[k]["color"], width=2),
-            name=players[k]["short"]
+            fillcolor=hex_to_rgba(p["color"], 0.2),   # FIXED: was p["color"] + "33"
+            line=dict(color=p["color"], width=2),
+            name=p["short"]
         ))
-    fig3.update_layout(
+
+    fig.update_layout(
         polar=dict(
             bgcolor="rgba(16,22,42,0.9)",
-            radialaxis=dict(visible=True, color=GREY, gridcolor="#1E2640"),
+            radialaxis=dict(visible=True, range=[0, 100], color=GREY, gridcolor="#1E2640"),
             angularaxis=dict(color=TEXT, gridcolor="#1E2640")
         ),
-        title=dict(text="Multi-Metric Radar Comparison", font=dict(size=13, color=GOLD), x=0.5),
-        showlegend=True,
-        legend=dict(font=dict(color=TEXT), bgcolor="rgba(0,0,0,0)"),
         paper_bgcolor="rgba(0,0,0,0)",
-        font=dict(color=TEXT),
-        margin=dict(l=60, r=60, t=50, b=40)
+        font=dict(family="Georgia, serif", color=TEXT, size=11),
+        legend=dict(font=dict(color=TEXT), bgcolor="rgba(0,0,0,0)"),
+        margin=dict(l=40, r=40, t=60, b=40),
+        title=dict(text="Normalized Metric Comparison (Radar)", font=dict(size=13, color=GOLD), x=0.5)
     )
-    figs.append((fig3, "Radar view shows each player's strengths and weaknesses across all key metrics."))
-
-    return figs
+    return fig
 
 
 # -----------------------------
@@ -354,6 +449,7 @@ app.layout = html.Div([
     dcc.Store(id="selected-player", data=None),
     dcc.Store(id="stage", data="select"),
     dcc.Store(id="selected-chart", data=None),
+    dcc.Store(id="compare-search-player", data="LeBron"),
 
     # Background texture
     html.Div(style={
@@ -396,7 +492,7 @@ app.layout = html.Div([
             "top": "24px",
             "left": "24px",
             "background": "transparent",
-            "border": "1px solid {GOLD}",
+            "border": f"1px solid {GOLD}",
             "color": GOLD,
             "fontFamily": "'Georgia', serif",
             "fontSize": "11px",
@@ -478,6 +574,26 @@ def handle_state(w, j, s, back, c0, c1, c2, compare, selected, stage, sel_chart)
 
 
 # -----------------------------
+# COMPARE SEARCH PLAYER STORE
+# -----------------------------
+@app.callback(
+    Output("compare-search-player", "data"),
+    Input("compare-search-submit", "n_clicks", allow_optional=True),
+    Input("compare-search-input", "n_submit", allow_optional=True),
+    State("compare-search-input", "value"),
+    State("compare-search-player", "data"),
+    prevent_initial_call=True
+)
+def update_search_player(n_clicks, n_submit, value, current):
+    if not value or not value.strip():
+        return current
+    matches = df[df["Player"].str.contains(value.strip(), case=False, na=False)]
+    if matches.empty:
+        return current
+    return value.strip()
+
+
+# -----------------------------
 # TITLE / SUBTITLE
 # -----------------------------
 @app.callback(
@@ -496,7 +612,7 @@ def update_header(player, stage):
     if stage == "advanced" and player:
         return players[player]["short"], "DEEP DIVE — CLICK COMPARE WHEN READY"
     if stage == "compare":
-        return "HEAD TO HEAD", "THE THREE CANDIDATES COMPARED"
+        return "HEAD TO HEAD", "PERCENTILE RANKINGS — ALL CANDIDATES"
     return "2026 MVP RACE", "SELECT A CANDIDATE"
 
 
@@ -522,6 +638,77 @@ def toggle_back(stage):
 
 
 # -----------------------------
+# COMPARE CHARTS (percentile bars, updated when search changes)
+# -----------------------------
+@app.callback(
+    Output("compare-charts-container", "children"),
+    Output("compare-search-status", "children"),
+    Input("compare-search-player", "data"),
+    prevent_initial_call=False
+)
+def update_compare_charts(search_name):
+    if not search_name:
+        search_name = "LeBron"
+
+    candidates_data = {}
+    for key in PLAYER_KEYS:
+        pcts, raw = get_compare_percentiles(players[key]["search"])
+        candidates_data[key] = {"percentiles": pcts or {}, "raw": raw or {}}
+
+    search_pcts, search_raw = get_compare_percentiles(search_name)
+    search_row = get_player_row(search_name)
+    if search_row.empty:
+        status = html.Div(f'⚠ No player found matching "{search_name}"',
+                          style={"color": OTHER_CANDIDATE_RED, "fontSize": "11px", "letterSpacing": "2px"})
+        search_label = "NOT FOUND"
+        search_data = {"percentiles": {}, "raw": {}}
+    else:
+        actual_name = search_row["Player"].values[0]
+        last_name = actual_name.split(" ")[-1].upper()
+        status = html.Div(f'✓ SHOWING: {actual_name.upper()}',
+                          style={"color": GOLD, "fontSize": "11px", "letterSpacing": "2px"})
+        search_label = last_name[:8]
+        search_data = {"percentiles": search_pcts or {}, "raw": search_raw or {}}
+
+    chart_divs = []
+    for metric in COMPARE_METRICS:
+        fig = build_percentile_chart(metric, candidates_data, search_data, search_label)
+        chart_divs.append(
+            html.Div([
+                dcc.Graph(figure=fig, config={"displayModeBar": False},
+                          style={"height": "200px"})
+            ], style={
+                "background": PANEL,
+                "border": "1px solid #1E2640",
+                "borderRadius": "4px",
+                "overflow": "hidden",
+                "flex": "1",
+                "minWidth": "300px"
+            })
+        )
+
+    # Radar chart spanning full width below the bars
+    radar_fig = build_comparison_charts()
+    radar_div = html.Div([
+        dcc.Graph(figure=radar_fig, config={"displayModeBar": False}, style={"height": "420px"})
+    ], style={
+        "background": PANEL,
+        "border": "1px solid #1E2640",
+        "borderRadius": "4px",
+        "overflow": "hidden",
+        "width": "100%",
+        "marginTop": "12px"
+    })
+
+    grid = html.Div([
+        html.Div(chart_divs, style={"display": "flex", "flexWrap": "wrap", "gap": "12px"}),
+        radar_div
+    ])
+
+    return grid, status
+
+
+# -----------------------------
 # MAIN CONTENT
 # -----------------------------
 @app.callback(
@@ -532,7 +719,7 @@ def toggle_back(stage):
 )
 def render_content(player, stage, sel_chart):
 
-    # ---- STEP 1: SELECT ----
+    # ---- STEP 1: SELECT / FOCUS ----
     if stage == "select" or stage == "focus":
         cards = []
         for key in PLAYER_KEYS:
@@ -559,23 +746,15 @@ def render_content(player, stage, sel_chart):
             }
 
             img_style = {
-                "width": "200px",
-                "height": "160px",
-                "objectFit": "cover",
-                "objectPosition": "top",
-                "borderRadius": "2px",
-                "display": "block",
-                "marginBottom": "16px"
+                "width": "200px", "height": "160px",
+                "objectFit": "cover", "objectPosition": "top",
+                "borderRadius": "2px", "display": "block", "marginBottom": "16px"
             }
 
             hint = html.Div(
                 "CLICK AGAIN TO CONTINUE →" if is_selected else "CLICK TO SELECT",
-                style={
-                    "fontSize": "10px",
-                    "letterSpacing": "3px",
-                    "color": p["color"] if is_selected else GREY,
-                    "marginTop": "8px"
-                }
+                style={"fontSize": "10px", "letterSpacing": "3px",
+                       "color": p["color"] if is_selected else GREY, "marginTop": "8px"}
             )
 
             cards.append(
@@ -583,8 +762,7 @@ def render_content(player, stage, sel_chart):
                     html.Img(src=p["img"], style=img_style),
                     html.Div(p["short"], style={
                         "fontSize": "22px", "fontWeight": "900",
-                        "letterSpacing": "4px", "color": WHITE,
-                        "textAlign": "center"
+                        "letterSpacing": "4px", "color": WHITE, "textAlign": "center"
                     }),
                     html.Div(p["team"], style={
                         "fontSize": "10px", "letterSpacing": "3px",
@@ -596,18 +774,12 @@ def render_content(player, stage, sel_chart):
 
         return html.Div([
             html.Div(cards, style={
-                "display": "flex",
-                "justifyContent": "center",
-                "gap": "24px",
-                "flexWrap": "wrap",
-                "padding": "20px 0 60px"
+                "display": "flex", "justifyContent": "center",
+                "gap": "24px", "flexWrap": "wrap", "padding": "20px 0 60px"
             }),
             html.Div("↑ THE THREE CANDIDATES FOR 2026 NBA MVP ↑", style={
-                "textAlign": "center",
-                "fontSize": "10px",
-                "letterSpacing": "4px",
-                "color": GREY,
-                "paddingBottom": "20px"
+                "textAlign": "center", "fontSize": "10px",
+                "letterSpacing": "4px", "color": GREY, "paddingBottom": "20px"
             })
         ])
 
@@ -622,79 +794,54 @@ def render_content(player, stage, sel_chart):
             caption = chart_data["caption"]
             chart_cards.append(
                 html.Div([
-                    dcc.Graph(
-                        figure=fig,
-                        config={"displayModeBar": False},
-                        style={"height": "260px"}
-                    ),
+                    dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "260px"}),
                     html.Div(caption, style={
-                        "fontSize": "11px",
-                        "color": GREY,
-                        "fontStyle": "italic",
-                        "padding": "8px 12px",
-                        "borderTop": f"1px solid #1E2640"
+                        "fontSize": "11px", "color": GREY, "fontStyle": "italic",
+                        "padding": "8px 12px", "borderTop": "1px solid #1E2640"
                     }),
                     html.Button("EXPLORE →", id=f"chart-{i}-btn", n_clicks=0, style={
-                        "width": "100%",
-                        "background": "transparent",
-                        "border": f"1px solid {p['color']}55",
-                        "color": p["color"],
-                        "fontFamily": "'Georgia', serif",
-                        "fontSize": "10px",
-                        "letterSpacing": "3px",
-                        "padding": "10px",
-                        "cursor": "pointer",
-                        "transition": "all 0.3s"
+                        "width": "100%", "background": "transparent",
+                        "border": f"1px solid {p['color']}55", "color": p["color"],
+                        "fontFamily": "'Georgia', serif", "fontSize": "10px",
+                        "letterSpacing": "3px", "padding": "10px",
+                        "cursor": "pointer", "transition": "all 0.3s"
                     })
                 ], style={
-                    "background": PANEL,
-                    "border": f"1px solid #1E2640",
-                    "borderRadius": "4px",
-                    "overflow": "hidden",
-                    "flex": "1",
-                    "minWidth": "280px"
+                    "background": PANEL, "border": "1px solid #1E2640",
+                    "borderRadius": "4px", "overflow": "hidden",
+                    "flex": "1", "minWidth": "280px"
                 })
             )
 
-        # Pad missing chart buttons so callbacks don't break
         for i in range(len(charts_data), 3):
             chart_cards.append(html.Div([
                 html.Button("", id=f"chart-{i}-btn", n_clicks=0, style={"display": "none"})
             ]))
 
         return html.Div([
-            # Small player portrait top-left
             html.Div([
                 html.Img(src=p["img"], style={
                     "width": "80px", "height": "64px",
                     "objectFit": "cover", "objectPosition": "top",
-                    "borderRadius": "2px",
-                    "border": f"2px solid {p['color']}"
+                    "borderRadius": "2px", "border": f"2px solid {p['color']}"
                 }),
                 html.Div([
-                    html.Div(p["short"], style={
-                        "fontSize": "18px", "fontWeight": "900",
-                        "letterSpacing": "3px", "color": WHITE
+                    html.Div(p["name"], style={
+                        "fontSize": "18px","color": GOLD_LIGHT, "fontWeight": "900",
+                        "letterSpacing": "3px"
                     }),
                     html.Div(p["argument"], style={
-                        "fontSize": "12px", "color": GREY,
-                        "fontStyle": "italic", "maxWidth": "500px",
-                        "lineHeight": "1.5"
+                        "fontSize": "12px", "color": WHITE, "fontStyle": "italic",
+                        "maxWidth": "500px", "lineHeight": "1.5"
                     })
                 ], style={"marginLeft": "16px"})
             ], style={"display": "flex", "alignItems": "center", "marginBottom": "28px"}),
 
-            # Charts
-            html.Div(chart_cards, style={
-                "display": "flex",
-                "gap": "16px",
-                "flexWrap": "wrap"
-            }),
+            html.Div(chart_cards, style={"display": "flex", "gap": "16px", "flexWrap": "wrap"}),
 
             html.Div("CLICK ANY CHART TO DIVE DEEPER", style={
                 "textAlign": "center", "fontSize": "10px",
-                "letterSpacing": "4px", "color": GREY,
-                "padding": "20px 0 10px"
+                "letterSpacing": "4px", "color": GREY, "padding": "20px 0 10px"
             })
         ], style={"padding": "10px 0 40px"})
 
@@ -705,7 +852,6 @@ def render_content(player, stage, sel_chart):
         chart_info = charts_data[sel_chart]
         main_fig = chart_info["fig"]
         main_caption = chart_info["caption"]
-        others = [(i, cd["fig"], cd["caption"]) for i, cd in enumerate(charts_data) if i != sel_chart]
 
         row = get_player_row(p["search"])
         color = p["color"]
@@ -722,36 +868,27 @@ def render_content(player, stage, sel_chart):
 
         if len(support_charts) < 2:
             alt_charts = []
-            # Win Shares breakdown
             if "OWS" in df.columns and "DWS" in df.columns and not row.empty:
                 fig_ws = go.Figure()
                 ows_val = float(row["OWS"].values[0])
                 dws_val = float(row["DWS"].values[0])
                 avg_ows = df["OWS"].mean()
                 avg_dws = df["DWS"].mean()
-
                 fig_ws.add_trace(go.Bar(
-                    x=["Offensive WS", "Defensive WS"],
-                    y=[ows_val, dws_val],
-                    name=p["short"],
-                    marker_color=color,
+                    x=["Offensive WS", "Defensive WS"], y=[ows_val, dws_val],
+                    name=p["short"], marker_color=color,
                     text=[f"{ows_val:.1f}", f"{dws_val:.1f}"],
-                    textposition="outside",
-                    textfont=dict(color=WHITE)
+                    textposition="outside", textfont=dict(color=WHITE)
                 ))
                 fig_ws.add_trace(go.Bar(
-                    x=["Offensive WS", "Defensive WS"],
-                    y=[avg_ows, avg_dws],
-                    name="League Avg",
-                    marker_color=GREY,
+                    x=["Offensive WS", "Defensive WS"], y=[avg_ows, avg_dws],
+                    name="League Avg", marker_color=GREY,
                     text=[f"{avg_ows:.1f}", f"{avg_dws:.1f}"],
-                    textposition="outside",
-                    textfont=dict(color=GREY)
+                    textposition="outside", textfont=dict(color=GREY)
                 ))
                 fig_ws.update_layout(
                     title=dict(text="Win Shares vs League Average", font=dict(size=13, color=GOLD), x=0.5),
-                    barmode="group",
-                    showlegend=True,
+                    barmode="group", showlegend=True,
                     legend=dict(font=dict(color=TEXT), bgcolor="rgba(0,0,0,0)"),
                     **CHART_LAYOUT
                 )
@@ -765,27 +902,22 @@ def render_content(player, stage, sel_chart):
                     val = row[m].values[0]
                     pct = (df[m] < val).sum() / len(df) * 100
                     percentiles.append(pct)
-
                 fig_pct = go.Figure(go.Bar(
-                    x=available,
-                    y=percentiles,
+                    x=available, y=percentiles,
                     marker_color=[color] * len(available),
                     text=[f"{p:.0f}th" for p in percentiles],
-                    textposition="outside",
-                    textfont=dict(color=WHITE)
+                    textposition="outside", textfont=dict(color=WHITE)
                 ))
                 theme = {k: v for k, v in CHART_LAYOUT.items() if k != "yaxis"}
                 fig_pct.update_layout(
                     title=dict(text=f"{p['short']} League Percentile Rankings", font=dict(size=13, color=GOLD), x=0.5),
                     yaxis=dict(range=[0, 115], title="Percentile"),
-                    showlegend=False,
-                    **theme
+                    showlegend=False, **theme
                 )
                 alt_charts.append((fig_pct, f"{p['short']} ranks in the elite tier league-wide across all key metrics."))
 
             while len(alt_charts) < 2:
                 alt_charts.append((go.Figure(), ""))
-
             support_charts = alt_charts
 
         right_charts = []
@@ -798,155 +930,174 @@ def render_content(player, stage, sel_chart):
                         "fontStyle": "italic", "padding": "8px 12px"
                     })
                 ], style={
-                    "background": PANEL,
-                    "border": f"1px solid #1E2640",
-                    "borderRadius": "4px",
-                    "overflow": "hidden",
-                    "marginBottom": "12px"
+                    "background": PANEL, "border": "1px solid #1E2640",
+                    "borderRadius": "4px", "overflow": "hidden", "marginBottom": "12px"
                 })
             )
 
         compare_btn = html.Div([
             html.Button("COMPARE ALL CANDIDATES →", id="compare-btn", n_clicks=0, style={
                 "background": f"linear-gradient(135deg, {GOLD} 0%, {GOLD_LIGHT} 100%)",
-                "border": "none",
-                "color": "#0A0E1A",
-                "fontFamily": "'Georgia', serif",
-                "fontSize": "12px",
-                "fontWeight": "bold",
-                "letterSpacing": "3px",
-                "padding": "16px 40px",
-                "cursor": "pointer",
-                "borderRadius": "2px",
-                "marginTop": "24px",
-                "transition": "all 0.3s"
+                "border": "none", "color": "#0A0E1A",
+                "fontFamily": "'Georgia', serif", "fontSize": "12px",
+                "fontWeight": "bold", "letterSpacing": "3px",
+                "padding": "16px 40px", "cursor": "pointer",
+                "borderRadius": "2px", "marginTop": "24px", "transition": "all 0.3s"
             })
         ], style={"textAlign": "center"})
 
         return html.Div([
             html.Div([
-                # Left: main expanded chart (2x size, takes up 60% width)
                 html.Div([
                     html.Div("SELECTED METRIC", style={
                         "fontSize": "10px", "letterSpacing": "4px",
                         "color": color, "marginBottom": "8px"
                     }),
-                    dcc.Graph(
-                        figure=main_fig,
-                        config={"displayModeBar": True},
-                        style={"height": "520px"}
-                    ),
+                    dcc.Graph(figure=main_fig, config={"displayModeBar": True}, style={"height": "520px"}),
                     html.Div(main_caption, style={
-                        "fontSize": "12px", "color": TEXT,
-                        "fontStyle": "italic",
-                        "padding": "12px 16px",
-                        "background": PANEL,
-                        "borderTop": f"2px solid {color}",
-                        "lineHeight": "1.6"
+                        "fontSize": "12px", "color": TEXT, "fontStyle": "italic",
+                        "padding": "12px 16px", "background": PANEL,
+                        "borderTop": f"2px solid {color}", "lineHeight": "1.6"
                     })
                 ], style={
-                    "flex": "1.8",
-                    "background": PANEL,
-                    "border": f"1px solid {color}44",
-                    "borderRadius": "4px",
-                    "overflow": "hidden",
-                    "boxShadow": f"0 0 30px {color}22"
+                    "flex": "1.8", "background": PANEL,
+                    "border": f"1px solid {color}44", "borderRadius": "4px",
+                    "overflow": "hidden", "boxShadow": f"0 0 30px {color}22"
                 }),
 
-                # Right: supporting charts stacked vertically (two same-size charts)
                 html.Div([
                     html.Div("SUPPORTING EVIDENCE", style={
                         "fontSize": "10px", "letterSpacing": "4px",
                         "color": GOLD, "marginBottom": "12px"
                     }),
-                    html.Div([
-                        *right_charts
-                    ], style={
-                        "display": "flex",
-                        "flexDirection": "column",
-                        "gap": "16px"
-                    })
+                    html.Div(right_charts, style={"display": "flex", "flexDirection": "column", "gap": "16px"})
                 ], style={
-                    "flex": "1",
-                    "paddingLeft": "16px",
-                    "display": "flex",
-                    "flexDirection": "column"
+                    "flex": "1", "paddingLeft": "16px",
+                    "display": "flex", "flexDirection": "column"
                 })
 
             ], style={"display": "flex", "gap": "16px", "alignItems": "flex-start"}),
-
             compare_btn
-
         ], style={"padding": "10px 0 40px"})
 
     # ---- STEP 4: COMPARE ----
     if stage == "compare":
-        comp_charts = build_comparison_charts()
-
-        # Dummy compare-btn so callback IDs are always present
-        dummy_compare = html.Div(html.Button("", id="compare-btn", n_clicks=0, style={"display": "none"}))
-
-        chart_divs = []
-        for i, (fig, caption) in enumerate(comp_charts):
-            chart_divs.append(
-                html.Div([
-                    dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "300px"}),
-                    html.Div(caption, style={
-                        "fontSize": "11px", "color": GREY,
-                        "fontStyle": "italic", "padding": "10px 14px",
-                        "borderTop": "1px solid #1E2640"
-                    })
-                ], style={
-                    "background": PANEL,
-                    "border": "1px solid #1E2640",
-                    "borderRadius": "4px",
-                    "overflow": "hidden",
-                    "flex": "1",
-                    "minWidth": "280px"
-                })
-            )
-
-        # Mini player portraits
-        portraits = []
+        legend_items = []
         for key in PLAYER_KEYS:
             p = players[key]
-            portraits.append(html.Div([
-                html.Img(src=p["img"], style={
-                    "width": "60px", "height": "48px",
-                    "objectFit": "cover", "objectPosition": "top",
+            legend_items.append(html.Div([
+                html.Div(style={
+                    "width": "12px", "height": "12px",
                     "borderRadius": "2px",
-                    "border": f"2px solid {p['color']}"
+                    "background": p["color"],
+                    "display": "inline-block",
+                    "marginRight": "6px",
+                    "verticalAlign": "middle"
                 }),
-                html.Div(p["short"], style={
+                html.Span(p["short"], style={
                     "fontSize": "11px", "letterSpacing": "2px",
-                    "color": p["color"], "marginTop": "6px",
-                    "textAlign": "center"
+                    "color": p["color"], "verticalAlign": "middle"
                 })
-            ], style={"textAlign": "center"}))
+            ], style={"display": "inline-flex", "alignItems": "center", "marginRight": "20px"}))
+
+        legend_items.append(html.Div([
+            html.Div(style={
+                "width": "12px", "height": "12px",
+                "borderRadius": "2px",
+                "background": GOLD,
+                "display": "inline-block",
+                "marginRight": "6px",
+                "verticalAlign": "middle"
+            }),
+            html.Span("COMPARISON PLAYER", style={
+                "fontSize": "11px", "letterSpacing": "2px",
+                "color": GOLD, "verticalAlign": "middle"
+            })
+        ], style={"display": "inline-flex", "alignItems": "center"}))
+
+        search_bar = html.Div([
+            html.Div("COMPARE AGAINST ANY PLAYER", style={
+                "fontSize": "10px", "letterSpacing": "4px",
+                "color": GREY, "marginBottom": "10px"
+            }),
+            html.Div([
+                dcc.Input(
+                    id="compare-search-input",
+                    type="text",
+                    placeholder="Search player name...",
+                    debounce=False,
+                    value="LeBron",
+                    style={
+                        "background": "#0D1525",
+                        "border": f"1px solid {GOLD}55",
+                        "color": WHITE,
+                        "fontFamily": "'Georgia', serif",
+                        "fontSize": "13px",
+                        "padding": "10px 16px",
+                        "borderRadius": "2px 0 0 2px",
+                        "outline": "none",
+                        "width": "240px",
+                        "letterSpacing": "1px"
+                    }
+                ),
+                html.Button("SEARCH", id="compare-search-submit", n_clicks=0, style={
+                    "background": f"linear-gradient(135deg, {GOLD} 0%, {GOLD_LIGHT} 100%)",
+                    "border": "none",
+                    "color": "#0A0E1A",
+                    "fontFamily": "'Georgia', serif",
+                    "fontSize": "11px",
+                    "fontWeight": "bold",
+                    "letterSpacing": "2px",
+                    "padding": "10px 20px",
+                    "cursor": "pointer",
+                    "borderRadius": "0 2px 2px 0"
+                })
+            ], style={"display": "flex", "alignItems": "center"}),
+            html.Div(id="compare-search-status", style={"marginTop": "8px", "height": "16px"})
+        ], style={"marginBottom": "28px"})
 
         return html.Div([
-            dummy_compare,
-            # Dummy chart buttons to prevent callback errors
             html.Div([
+                html.Button("", id="compare-btn", n_clicks=0, style={"display": "none"}),
                 html.Button("", id="chart-0-btn", n_clicks=0, style={"display": "none"}),
                 html.Button("", id="chart-1-btn", n_clicks=0, style={"display": "none"}),
                 html.Button("", id="chart-2-btn", n_clicks=0, style={"display": "none"}),
             ]),
 
             html.Div([
-                html.Div("THE CANDIDATES", style={
-                    "fontSize": "10px", "letterSpacing": "4px",
-                    "color": GOLD, "marginBottom": "16px"
-                }),
-                html.Div(portraits, style={
-                    "display": "flex", "gap": "32px",
-                    "justifyContent": "center", "marginBottom": "32px"
-                }),
-            ], style={"textAlign": "center"}),
+                html.Div([
+                    html.Div("THE CANDIDATES", style={
+                        "fontSize": "10px", "letterSpacing": "4px",
+                        "color": GOLD, "marginBottom": "12px"
+                    }),
+                    html.Div([
+                        html.Div([
+                            html.Img(src=players[key]["img"], style={
+                                "width": "60px", "height": "48px",
+                                "objectFit": "cover", "objectPosition": "top",
+                                "borderRadius": "2px",
+                                "border": f"2px solid {players[key]['color']}"
+                            }),
+                            html.Div(players[key]["short"], style={
+                                "fontSize": "11px", "letterSpacing": "2px",
+                                "color": players[key]["color"],
+                                "marginTop": "6px", "textAlign": "center"
+                            })
+                        ], style={"textAlign": "center"})
+                        for key in PLAYER_KEYS
+                    ], style={"display": "flex", "gap": "20px", "marginBottom": "16px"}),
 
-            html.Div(chart_divs, style={
-                "display": "flex", "gap": "16px", "flexWrap": "wrap"
+                    html.Div(legend_items, style={"display": "flex", "flexWrap": "wrap", "alignItems": "center"})
+                ], style={"flex": "1"}),
+
+                search_bar
+            ], style={
+                "display": "flex", "justifyContent": "space-between",
+                "alignItems": "flex-start", "flexWrap": "wrap",
+                "gap": "20px", "marginBottom": "20px"
             }),
+
+            html.Div(id="compare-charts-container"),
 
             html.Div([
                 html.Div("WHO DESERVES THE AWARD?", style={
@@ -967,7 +1118,7 @@ def render_content(player, stage, sel_chart):
 
         ], style={"padding": "10px 0 40px"})
 
-    # Fallback: always render dummy IDs so callbacks don't crash
+    # Fallback
     return html.Div([
         html.Button("", id="compare-btn", n_clicks=0, style={"display": "none"}),
         html.Button("", id="chart-0-btn", n_clicks=0, style={"display": "none"}),
