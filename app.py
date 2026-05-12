@@ -929,7 +929,7 @@ def render_content(player, stage, sel_chart):
                         "fontStyle": "italic", "padding": "8px 12px"
                     })
                 ], style={
-                    "background": PANEL, "border": "1px solid #1E2640",
+                    "background": PANEL,
                     "borderRadius": "4px", "overflow": "hidden", "marginBottom": "12px"
                 })
             )
