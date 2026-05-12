@@ -56,7 +56,7 @@ players = {
         "img": "https://cdn.nba.com/headshots/nba/latest/1040x760/203999.png",
         "search": "Jokic",
         "color": "#FFC72C",
-        "argument": "Jokic's Player Efficiency Rating (PER, measured in positive stats - negative stats) combined with his VORP (value over replacement player, measures box score compared to a replacement player) lead all players — his all-around statistical dominance is unmatched in league history. He is looking to cement himself as one of the greatest players ever, with a fourth MVP award solidifying his legacy in the record books."
+        "argument": "Jokic's Player Efficiency Rating (PER, measured in positive stats - negative stats) combined with his VORP (value over replacement player, measures box score compared to a replacement player) lead all players - his all-around statistical dominance is unmatched in league history. He is looking to cement himself as one of the greatest players ever, with a fourth MVP award solidifying his legacy in the record books."
     },
     "shai": {
         "name": "Shai Gilgeous-Alexander",
@@ -246,7 +246,7 @@ def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_
     if pos_col is not None and not row.empty:
         pos = row[pos_col].values[0]
         cohort = df[df[pos_col] == pos]
-        title = f"{x_label or x} vs {y_label or y} — {pos} Players"
+        title = f"{x_label or x} vs {y_label or y} - {pos} Players"
         caption = f"{player_short} stands out among other {pos} players in the same metric set."
         charts.append((styled_scatter(cohort, x, y, row, color, title, x_label, y_label, other_rows=other_rows), caption))
 
@@ -258,7 +258,7 @@ def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_
         award_mask = df[award_col].astype(str).str.contains(r"1|yes|true|MVP|All[-_ ]NBA|ALLNBA", case=False, na=False)
         cohort = df[award_mask]
         if len(cohort) > 0:
-            title = f"{x_label or x} vs {y_label or y} — Award Winners"
+            title = f"{x_label or x} vs {y_label or y} - Award Winners"
             caption = f"{player_short} compared to the league's award-winning peers."
             charts.append((styled_scatter(cohort, x, y, row, color, title, x_label, y_label, other_rows=other_rows), caption))
 
@@ -267,14 +267,14 @@ def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_
         if mp_col is not None and not row.empty:
             median_mp = df[mp_col].median()
             cohort = df[df[mp_col] >= median_mp]
-            title = f"{x_label or x} vs {y_label or y} — High Minute Players"
+            title = f"{x_label or x} vs {y_label or y} - High Minute Players"
             caption = f"{player_short} compared to players who get the most minutes."
             charts.append((styled_scatter(cohort, x, y, row, color, title, x_label, y_label, other_rows=other_rows), caption))
 
     if len(charts) < 2:
         threshold = df[y].quantile(0.75) if y in df.columns else None
         cohort = df[df[y] >= threshold] if threshold is not None else df
-        title = f"{x_label or x} vs {y_label or y} — Top Cohort"
+        title = f"{x_label or x} vs {y_label or y} - Top Cohort"
         caption = f"{player_short} compared to the top performers on this pair of metrics."
         charts.append((styled_scatter(cohort, x, y, row, color, title, x_label, y_label, other_rows=other_rows), caption))
 
@@ -300,7 +300,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "AST%", "TRB%", row, color,
                     "Assist % vs Rebound %",
                     "Assist Rate (AST%)", "Rebound Rate (TRB%)", other_rows=other_candidate_rows),
-                "caption": "No center in NBA history has ever reached this high of a combined assist and rebound rate — Jokic's unique playstyle makes him a triple-double threat every night. He is truly a one-of-one archetype in the NBA.",
+                "caption": "No center in NBA history has ever reached this high of a combined assist and rebound rate - Jokic's unique playstyle makes him a triple-double threat every night. He is truly a one-of-one archetype in the NBA.",
                 "x": "AST%", "y": "TRB%",
                 "x_label": "Assist Rate (AST%)", "y_label": "Rebound Rate (TRB%)"
             },
@@ -308,7 +308,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "VORP", "PER", row, color,
                     "VORP vs Player Efficiency Rating",
                     "Value Over Replacement (VORP)", "Player Efficiency Rating (PER)", other_rows=other_candidate_rows),
-                "caption": "Jokic leads the league in both VORP and PER — the two gold standards of player value. He is far and away the best player in both categories. If the MVP award was given to the player with the best advanced metrics, Jokic would have won the award 3 months ago. His statistical dominance is unlike anything we have seen before.",
+                "caption": "Jokic leads the league in both VORP and PER - the two gold standards of player value. He is far and away the best player in both categories. If the MVP award was given to the player with the best advanced metrics, Jokic would have won the award 3 months ago. His statistical dominance is unlike anything we have seen before.",
                 "x": "VORP", "y": "PER",
                 "x_label": "Value Over Replacement (VORP)", "y_label": "Player Efficiency Rating (PER)"
             },
@@ -327,7 +327,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "PER", "VORP", row, color,
                     "Efficiency vs Overall Value",
                     "Player Efficiency Rating (PER)", "Value Over Replacement (VORP)", other_rows=other_candidate_rows),
-                "caption": "Wemby's Player Efficiency Rating (PER, measured in positive stats - negative stats) combined with his VORP (value over replacement player, measures box score compared to a replacement player) shows an extraordinary player for his age in just his third season. The only player above Wembanyama not in the MVP race is Luka Doncic, a perennial MVP candidate and one of the best players in the league — Wemby is in elite company here.",
+                "caption": "Wemby's Player Efficiency Rating (PER, measured in positive stats - negative stats) combined with his VORP (value over replacement player, measures box score compared to a replacement player) shows an extraordinary player for his age in just his third season. The only player above Wembanyama not in the MVP race is Luka Doncic, a perennial MVP candidate and one of the best players in the league - Wemby is in elite company here.",
                 "x": "PER", "y": "VORP",
                 "x_label": "Player Efficiency Rating (PER)", "y_label": "Value Over Replacement (VORP)"
             },
@@ -335,7 +335,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "BLK%", "STL%", row, color,
                     "Block % vs Steal %",
                     "Block Rate (BLK%)", "Steal Rate (STL%)", other_rows=other_candidate_rows),
-                "caption": "His defensive versatility — blocking shots AND stealing the ball — is historically rare. At a staggering 7'4, Wembanyama demands respect on the court through his defensive contributions.",
+                "caption": "His defensive versatility - blocking shots AND stealing the ball - is historically rare. At a staggering 7'4, Wembanyama demands respect on the court through his defensive contributions.",
                 "x": "BLK%", "y": "STL%",
                 "x_label": "Block Rate (BLK%)", "y_label": "Steal Rate (STL%)"
             },
@@ -343,7 +343,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "OWS", "DWS", row, color,
                     "Offensive vs Defensive Win Shares",
                     "Offensive Win Shares (OWS)", "Defensive Win Shares (DWS)", other_rows=other_candidate_rows),
-                "caption": "While not as impressive on the offensive side as the other candidates, Wemby contributes elite win shares on BOTH ends — virtually no one else does this. Wembanyama is the premiere two-way player in the leauge, and deserved his Defensive Player of the Year award.",
+                "caption": "While not as impressive on the offensive side as the other candidates, Wemby contributes elite win shares on BOTH ends - virtually no one else does this. Wembanyama is the premiere two-way player in the leauge, and deserved his Defensive Player of the Year award.",
                 "x": "OWS", "y": "DWS",
                 "x_label": "Offensive Win Shares (OWS)", "y_label": "Defensive Win Shares (DWS)"
             },
@@ -362,7 +362,7 @@ def build_player_charts(player_key):
                 "fig": styled_scatter(df, "OWS", "VORP", row, color,
                     "Offensive Win Shares vs VORP",
                     "Offensive Win Shares (OWS)", "Value Over Replacement (VORP)", other_rows=other_candidate_rows),
-                "caption": "His OWS lead the guard position — he single-handedly drives OKC's offense. His VORP is the best among guards, showing that his contributions are not just efficient but also impactful. SGA's combination of efficiency and impact on the best team in the league makes him a strong MVP candidate.",
+                "caption": "His OWS lead all guards - he single-handedly drives OKC's offense. His VORP is the best among guards, showing that his contributions are not just efficient but also impactful. SGA's combination of efficiency and impact on the best team in the league makes him a strong MVP candidate.",
                 "x": "OWS", "y": "VORP",
                 "x_label": "Offensive Win Shares (OWS)", "y_label": "Value Over Replacement (VORP)"
             },
@@ -447,9 +447,9 @@ GLOBAL_STYLE = {
 # LAYOUT
 # -----------------------------
 app.layout = html.Div([
-    dcc.Store(id="selected-player", data=None),
-    dcc.Store(id="stage", data="select"),
-    dcc.Store(id="selected-chart", data=None),
+    dcc.Store(id="selected-player", data=None, storage_type="memory"),
+    dcc.Store(id="stage", data="select", storage_type="memory"),
+    dcc.Store(id="selected-chart", data=None, storage_type="memory"),
     dcc.Store(id="compare-search-player", data="LeBron"),
 
     # Background texture
@@ -469,7 +469,7 @@ app.layout = html.Div([
                 "color": GOLD,
                 "marginBottom": "4px"
             }),
-            html.H1(id="main-title", children="2026 MVP RACE", style={
+            html.H1(id="main-title", children="WHO SHOULD WIN THE 2026 MVP AWARD?", style={
                 "fontFamily": "'Georgia', serif",
                 "fontSize": "clamp(28px, 5vw, 52px)",
                 "fontWeight": "900",
@@ -605,14 +605,14 @@ def update_search_player(n_clicks, n_submit, value, current):
 )
 def update_header(player, stage):
     if stage == "select" or stage == "focus":  # <-- keep title during focus
-        return "2026 MVP RACE", "SELECT A CANDIDATE"
+        return "WHO SHOULD WIN THE 2026 MVP AWARD?", "SELECT A CANDIDATE"
     if stage == "charts" and player:
         return players[player]["short"], players[player]["team"].upper()
     if stage == "advanced" and player:
-        return players[player]["short"], "DEEP DIVE — CLICK COMPARE WHEN READY"
+        return players[player]["short"], "DEEP DIVE - CLICK COMPARE WHEN READY"
     if stage == "compare":
-        return "HEAD TO HEAD", "PERCENTILE RANKINGS — ALL CANDIDATES"
-    return "2026 MVP RACE", "SELECT A CANDIDATE"
+        return "HEAD TO HEAD", "PERCENTILE RANKINGS - ALL CANDIDATES"
+    return "WHO SHOULD WIN THE 2026 MVP AWARD?", "SELECT A CANDIDATE"
 
 
 # -----------------------------
