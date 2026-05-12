@@ -122,7 +122,7 @@ def styled_scatter(df_all, x, y, highlight_df, color, title, x_label=None, y_lab
             text=highlight_df["Player"].astype(str)
         ))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color=GOLD), x=0),
+        title=dict(text=title, font=dict(size=15, color=GOLD), x=0.1),
         showlegend=False,
         **CHART_LAYOUT
     )
