@@ -38,7 +38,6 @@ def hex_to_rgba(hex_color, alpha=0.2):
     r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
     return f"rgba({r},{g},{b},{alpha})"
 
-
 players = {
     "wemby": {
         "name": "Victor Wembanyama",
@@ -123,19 +122,17 @@ def styled_scatter(df_all, x, y, highlight_df, color, title, x_label=None, y_lab
             text=highlight_df["Player"].astype(str)
         ))
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13, color=GOLD), x=0.5),
+        title=dict(text=title, font=dict(size=13, color=GOLD), x=0),
         showlegend=False,
         **CHART_LAYOUT
     )
     return fig
-
 
 def _find_column(columns):
     for col in columns:
         if col in df.columns:
             return col
     return None
-
 
 def get_percentile(series, val):
     """Return percentile rank (0-100) of val in series, ignoring NaN."""
@@ -144,10 +141,8 @@ def get_percentile(series, val):
         return 0
     return float((clean < val).sum() / len(clean) * 100)
 
-
 def get_player_row(name):
     return df[df["Player"].str.contains(name, case=False, na=False)]
-
 
 def get_compare_percentiles(search_name):
     """Return dict of metric -> percentile for a player."""
@@ -165,7 +160,6 @@ def get_compare_percentiles(search_name):
             result[m] = 0
             raw[m] = 0
     return result, raw
-
 
 def build_percentile_chart(metric, candidates_data, search_data, search_label):
     """
@@ -216,7 +210,7 @@ def build_percentile_chart(metric, candidates_data, search_data, search_label):
     ))
 
     fig.update_layout(
-        title=dict(text=METRIC_LABELS.get(metric, metric), font=dict(size=13, color=GOLD), x=0.5),
+        title=dict(text=METRIC_LABELS.get(metric, metric), font=dict(size=13, color=GOLD), x=0),
         xaxis=dict(
             range=[0, 120],
             gridcolor="#1E2640",
@@ -238,7 +232,6 @@ def build_percentile_chart(metric, candidates_data, search_data, search_label):
         height=200
     )
     return fig
-
 
 def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_rows):
     charts = []
@@ -279,7 +272,6 @@ def build_cohort_charts(row, x, y, x_label, y_label, color, player_short, other_
         charts.append((styled_scatter(cohort, x, y, row, color, title, x_label, y_label, other_rows=other_rows), caption))
 
     return charts[:2]
-
 
 def build_player_charts(player_key):
     p = players[player_key]
@@ -377,7 +369,6 @@ def build_player_charts(player_key):
         ]
     return charts
 
-
 def build_comparison_charts():
     """Build radar/spider charts comparing all three MVP candidates."""
     metrics = ["VORP", "BPM", "WS/48", "PER", "TS%", "STL+BLK"]
@@ -426,10 +417,9 @@ def build_comparison_charts():
         font=dict(family="Georgia, serif", color=TEXT, size=11),
         legend=dict(font=dict(color=TEXT), bgcolor="rgba(0,0,0,0)"),
         margin=dict(l=40, r=40, t=60, b=40),
-        title=dict(text="Normalized Metric Comparison (Radar)", font=dict(size=13, color=GOLD), x=0.5)
+        title=dict(text="Normalized Metric Comparison (Radar)", font=dict(size=13, color=GOLD), x=0)
     )
     return fig
-
 
 # -----------------------------
 # GLOBAL CSS
@@ -519,7 +509,6 @@ app.layout = html.Div([
 
 ], style=GLOBAL_STYLE)
 
-
 # -----------------------------
 # STATE MACHINE
 # -----------------------------
@@ -573,7 +562,6 @@ def handle_state(w, j, s, back, c0, c1, c2, compare, selected, stage, sel_chart)
 
     return selected, stage, sel_chart
 
-
 # -----------------------------
 # COMPARE SEARCH PLAYER STORE
 # -----------------------------
@@ -592,7 +580,6 @@ def update_search_player(n_clicks, n_submit, value, current):
     if matches.empty:
         return current
     return value.strip()
-
 
 # -----------------------------
 # TITLE / SUBTITLE
@@ -614,7 +601,6 @@ def update_header(player, stage):
         return "HEAD TO HEAD", "PERCENTILE RANKINGS - ALL CANDIDATES"
     return "WHO SHOULD WIN THE 2026 MVP AWARD?", "SELECT A CANDIDATE"
 
-
 # -----------------------------
 # BACK BUTTON VISIBILITY
 # -----------------------------
@@ -634,7 +620,6 @@ def toggle_back(stage):
     if stage == "select":
         return {**base, "display": "none"}
     return {**base, "display": "block"}
-
 
 # -----------------------------
 # COMPARE CHARTS (percentile bars, updated when search changes)
@@ -678,7 +663,6 @@ def update_compare_charts(search_name):
                           style={"height": "200px"})
             ], style={
                 "background": PANEL,
-                "border": "1px solid #1E2640",
                 "borderRadius": "4px",
                 "overflow": "hidden",
                 "flex": "1",
@@ -692,7 +676,6 @@ def update_compare_charts(search_name):
         dcc.Graph(figure=radar_fig, config={"displayModeBar": False}, style={"height": "420px"})
     ], style={
         "background": PANEL,
-        "border": "1px solid #1E2640",
         "borderRadius": "4px",
         "overflow": "hidden",
         "width": "100%",
@@ -705,7 +688,6 @@ def update_compare_charts(search_name):
     ])
 
     return grid, status
-
 
 # -----------------------------
 # MAIN CONTENT
@@ -796,7 +778,8 @@ def render_content(player, stage, sel_chart):
                     dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "260px"}),
                     html.Div(caption, style={
                         "fontSize": "11px", "color": GREY, "fontStyle": "italic",
-                        "padding": "8px 12px", "borderTop": "1px solid #1E2640"
+                        "padding": "8px 12px", "borderTop": "1px solid #1E2640",
+                        "textAlign": "left", "paddingLeft": "16px"
                     }),
                     html.Button("EXPLORE →", id=f"chart-{i}-btn", n_clicks=0, style={
                         "width": "100%", "background": "transparent",
@@ -806,7 +789,7 @@ def render_content(player, stage, sel_chart):
                         "cursor": "pointer", "transition": "all 0.3s"
                     })
                 ], style={
-                    "background": PANEL, "border": "1px solid #1E2640",
+                    "background": PANEL,
                     "borderRadius": "4px", "overflow": "hidden",
                     "flex": "1", "minWidth": "280px"
                 })
@@ -886,7 +869,7 @@ def render_content(player, stage, sel_chart):
                     textposition="outside", textfont=dict(color=GREY)
                 ))
                 fig_ws.update_layout(
-                    title=dict(text="Win Shares vs League Average", font=dict(size=13, color=GOLD), x=0.5),
+                    title=dict(text="Win Shares vs League Average", font=dict(size=13, color=GOLD), x=0),
                     barmode="group", showlegend=True,
                     legend=dict(font=dict(color=TEXT), bgcolor="rgba(0,0,0,0)"),
                     **CHART_LAYOUT
@@ -909,7 +892,7 @@ def render_content(player, stage, sel_chart):
                 ))
                 theme = {k: v for k, v in CHART_LAYOUT.items() if k != "yaxis"}
                 fig_pct.update_layout(
-                    title=dict(text=f"{p['short']} League Percentile Rankings", font=dict(size=13, color=GOLD), x=0.5),
+                    title=dict(text=f"{p['short']} League Percentile Rankings", font=dict(size=13, color=GOLD), x=0),
                     yaxis=dict(range=[0, 115], title="Percentile"),
                     showlegend=False, **theme
                 )
@@ -960,7 +943,6 @@ def render_content(player, stage, sel_chart):
                     })
                 ], style={
                     "flex": "1.8", "background": PANEL,
-                    "border": f"1px solid {color}44", "borderRadius": "4px",
                     "overflow": "hidden", "boxShadow": f"0 0 30px {color}22"
                 }),
 
@@ -1041,7 +1023,6 @@ def render_content(player, stage, sel_chart):
                 ),
                 html.Button("SEARCH", id="compare-search-submit", n_clicks=0, style={
                     "background": f"linear-gradient(135deg, {GOLD} 0%, {GOLD_LIGHT} 100%)",
-                    "border": "none",
                     "color": "#0A0E1A",
                     "fontFamily": "'Georgia', serif",
                     "fontSize": "11px",
@@ -1124,7 +1105,6 @@ def render_content(player, stage, sel_chart):
         html.Button("", id="chart-1-btn", n_clicks=0, style={"display": "none"}),
         html.Button("", id="chart-2-btn", n_clicks=0, style={"display": "none"}),
     ])
-
 
 if __name__ == "__main__":
     app.run(debug=True)
